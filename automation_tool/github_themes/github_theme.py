@@ -35,7 +35,7 @@ REPO_CARD_THEME = [
 ]
 BASE_URL_STATS = "https://github-readme-stats.shion.dev/api?username=REvDl&show_icons=true&theme={}&rank_icon=github"
 BASE_LANGS_URL = "https://github-readme-stats.shion.dev/api/top-langs/?username=REvDl&layout=compact&theme={}"
-
+BASE_URL_STREAK = "https://streak-stats.demolab.com?user=REvDl&theme={}"
 def get_url_theme(main_url: str, open_browser: bool = False) -> list[str]:
 	urls = [main_url.format(theme) for theme in STATS_THEME]
 	if open_browser:
@@ -44,14 +44,17 @@ def get_url_theme(main_url: str, open_browser: bool = False) -> list[str]:
 	return urls
 
 
-def get_url_theme_file(main_url: str, filename: str = "stats.md"):
+def get_url_theme_file(main_url: str, filename: str = "stats.md", theme: list[str] =None):
+	if theme is None:
+		theme = STATS_THEME
 	with open(filename, "w", encoding="utf-8") as f:
-		for t in STATS_THEME:
+		for t in theme:
 			f.write(f"![{t}]({main_url.format(t)})\n")
 
 
 get_url_theme_file(BASE_URL_STATS)
 get_url_theme_file(BASE_LANGS_URL, "langs.md")
+get_url_theme_file(BASE_URL_STREAK, "streak.md", REPO_CARD_THEME)
 
 
 
