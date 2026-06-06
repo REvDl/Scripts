@@ -13,3 +13,10 @@ venv/
 
 langs.md
 stats.md
+
+.env
+.env.local
+
+automation_tool/github_themes/stats_combine.md
+automation_tool/github_themes/stats_theme.md
+automation_tool/github_themes/streak.md
