@@ -20,7 +20,6 @@ args = parser.parse_args()
 
 from google import genai
 from google.genai import types
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 from google.genai.errors import APIError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
@@ -32,36 +31,39 @@ CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 class Settings(BaseSettings):
     API_KEY: str
     USER_LANGUAGE: str
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=CONFIG_DIR / ".env", env_file_encoding="utf-8")
 
 
 settings = Settings()
 
+target_language = args.lang if args.lang is not None else settings.USER_LANGUAGE
+
+
 def is_retryable_error(exception):
-    return isinstance(exception, APIError) and exception.code == 503
+    return isinstance(exception, APIError) and exception.code in [429, 503]
 
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=2, min=2, max=10),
     retry=retry_if_exception(is_retryable_error),
-    reraise=True
+    reraise=True,
 )
 def _retry_request(client, model, contents, config):
     return client.models.generate_content(
         model=model, contents=contents, config=config
     )
 
-def decode_slang(short_text:str, user_api_key):
+def decode_slang(client: genai.Client, short_text:str, target_lang: str):
     try:
-        client = genai.Client(api_key=user_api_key)
         config = types.GenerateContentConfig(
             system_instruction=(
                 "You are a linguistic assistant. Your job is to transcribe abbreviated "
                 "texts, internet slang, and vowel-less messages into full, literate "
-                f"sentences in the {settings.USER_LANGUAGE} language. Return ONLY the corrected text, "
+                f"sentences in the {target_lang} language. Return ONLY the corrected text, "
                 "without unnecessary comments, quotation marks, or formatting."
             ),
             temperature=0.2,
+            max_output_tokens=60,
         )
         response = _retry_request(
             client=client,
@@ -69,7 +71,9 @@ def decode_slang(short_text:str, user_api_key):
             contents=short_text,
             config=config,
         )
-        return response.text.strip()
+        if response and response.text:
+            return response.text.strip()
+        return short_text
     except APIError as e:
         return f"Gemini API Error (Status {e.code}): {e.message}"
     except Exception as e:
