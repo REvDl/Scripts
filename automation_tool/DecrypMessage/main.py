@@ -22,7 +22,13 @@ from google import genai
 from google.genai import types
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 from google.genai.errors import APIError
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+from pathlib import Path
 
+HOME_DIR = Path.home()
+CONFIG_DIR = HOME_DIR / ".config" / "decryp"
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 class Settings(BaseSettings):
     API_KEY: str
     USER_LANGUAGE: str
