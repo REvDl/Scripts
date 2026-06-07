@@ -1,5 +1,23 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
-import os
+import argparse
+
+
+
+parser = argparse.ArgumentParser(
+    description="CLI utility for deciphering internet abbreviations using the Gemini API."
+)
+parser.add_argument(
+    "text", nargs="?", type=str, help="Abbreviated text to be deciphered"
+)
+parser.add_argument(
+    "--lang",
+    type=str,
+    default=None,
+    help="Transcription language (default from .env)",
+)
+args = parser.parse_args()
+
+
+
 from google import genai
 from google.genai import types
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
@@ -53,14 +71,24 @@ def decode_slang(short_text:str, user_api_key):
 
 
 def main():
-    while True:
-        user_text = input("Your request (or 'exit'): ")
-        if user_text.lower() in ["exit", "break"]:
-            break
-        if not user_text.strip():
-            continue
-        print(decode_slang(user_text, settings.API_KEY))
-    return ""
+    if not settings.API_KEY:
+        print("Error. API KEY is missing")
+        return
+    client = genai.Client(api_key=settings.API_KEY)
+    if args.text:
+        print(decode_slang(client, args.text, target_language))
+    else:
+        print(f"Interactive mode. Language: {target_language}. Type 'exit' to quit.")
+        while True:
+            try:
+                user_text = input("> ")
+                if user_text.lower() in ["exit", "break"]:
+                    break
+                if not user_text.strip():
+                    continue
+                print(decode_slang(client, user_text, target_language))
+            except (KeyboardInterrupt, EOFError):
+                break
 
 if __name__ == "__main__":
     main()
