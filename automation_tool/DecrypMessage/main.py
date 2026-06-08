@@ -64,13 +64,15 @@ def decode_slang(client: genai.Client, short_text:str, target_lang: str):
     try:
         config = types.GenerateContentConfig(
             system_instruction=(
-                "You are a linguistic assistant. Your job is to transcribe abbreviated "
-                "texts, internet slang, and vowel-less messages into full, literate "
-                f"sentences in the {target_lang} language. Return ONLY the corrected text, "
-                "without unnecessary comments, quotation marks, or formatting."
+                "You are a linguistic assistant. Your job is to accurately expand and decipher "
+                "internet abbreviations, slang, and vowel-less text into normal, grammatically correct words "
+                f"in the {target_lang} language. Maintain the original meaning and structure of the words. "
+                "Do not invent context or add unnecessary words if they weren't implied. "
+                "Example: 'пр кд чд' should be translated as 'Привет, как дела, что делаешь?'. "
+                "Return ONLY the corrected text, without comments or formatting."
             ),
             temperature=0.2,
-            max_output_tokens=60,
+            max_output_tokens=300,
         )
         response = _retry_request(
             client=client,
