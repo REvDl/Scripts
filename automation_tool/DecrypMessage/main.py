@@ -36,15 +36,29 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-target_language = args.lang if args.lang is not None else settings.USER_LANGUAGE
-
+from google import genai
+from google.genai import types
+from google.genai.errors import APIError
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 def is_retryable_error(exception):
-    return isinstance(exception, APIError) and exception.code in [429, 503]
+        #check HTTP status code
+    if getattr(exception, "http_status_code", None) in [429, 503]:
+        return True
+
+        #check string code gRPC (RESOURCE_EXHAUSTED — 429)
+    if getattr(exception, "code", None) in [429, 503, "RESOURCE_EXHAUSTED", "UNAVAILABLE"]:
+        return True
+
+    err_msg = str(exception).lower()
+    if "quota" in err_msg or "limit" in err_msg or "429" in err_msg:
+        return True
+
+    return False
 
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=2, min=2, max=10),
+    stop=stop_after_attempt(6),
+    wait=wait_exponential(multiplier=2, min=2, max=60),
     retry=retry_if_exception(is_retryable_error),
     reraise=True,
 )
