@@ -77,8 +77,8 @@ def is_retryable_error(exception):
     return False
 
 @retry(
-    stop=stop_after_attempt(6),
-    wait=wait_exponential(multiplier=2, min=2, max=60),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=2, max=10),
     retry=retry_if_exception(is_retryable_error),
     reraise=True,
 )
@@ -87,33 +87,64 @@ def _retry_request(client, model, contents, config):
         model=model, contents=contents, config=config
     )
 
-def decode_slang(client: genai.Client, short_text:str, target_lang: str):
-    try:
-        config = types.GenerateContentConfig(
-            system_instruction=(
-                "You are a linguistic assistant. Your job is to accurately expand and decipher "
-                "internet abbreviations, slang, and vowel-less text into normal, grammatically correct words "
-                f"in the {target_lang} language. Maintain the original meaning and structure of the words. "
-                "Do not invent context or add unnecessary words if they weren't implied. "
-                "Example: 'пр кд чд' should be translated as 'Привет, как дела, что делаешь?'. "
-                "Return ONLY the corrected text, without comments or formatting."
-            ),
-            temperature=0.2,
-            max_output_tokens=300,
-        )
-        response = _retry_request(
-            client=client,
-            model="gemini-2.5-flash",
-            contents=short_text,
-            config=config,
-        )
-        if response and response.text:
-            return response.text.strip()
-        return short_text
-    except APIError as e:
-        return f"Gemini API Error (Status {e.code}): {e.message}"
-    except Exception as e:
-        return f"Unexpected error: {e}"
+PROMPTS = {
+    "commit": (
+        "You are an expert Git assistant. Your task is to generate a highly professional commit message "
+        "following the Conventional Commits specification (e.g., feat(scope): message, fix(scope): message). "
+        "Analyze the provided code diff or raw user description. Use clear, concise English. "
+        "Return ONLY the raw text of the commit message. No markdown blocks, no quotation marks, no explanations."
+    ),
+    "shell": (
+        "You are a DevOps and Linux Terminal expert. Convert the user's natural language request into a valid, "
+        "safe, and optimized shell command. Detect whether it looks like Windows PowerShell or Bash context if possible, "
+        "but default to cross-platform or standard syntax. "
+        "Return ONLY the executable command text. Do not wrap it in markdown code blocks, do not add comments."
+    ),
+    "slang": (
+        "You are a linguistic assistant. Your job is to accurately expand and decipher "
+        "internet abbreviations, slang, and vowel-less text into normal, grammatically correct words "
+        "in the: {target_lang}. Maintain the original meaning. Do not invent unnecessary context. "
+        "Example: 'пр кд чд' should be translated as 'Привет, как дела, что делаешь?'. "
+        "Return ONLY the corrected text, without comments or formatting."
+    )
+}
+def decode_response(client: genai.Client, short_text:str, mode:str, target_lang: str):
+    models_pool = ["gemini-2.5-flash-lite", "gemini-2.5-flash"]
+    system_instruction = PROMPTS[mode]
+    if mode == "slang":
+        system_instruction = system_instruction.format(target_lang=target_lang)
+
+    config = types.GenerateContentConfig(
+        system_instruction=system_instruction,
+        temperature=0.2 if mode != "slang" else 0.4,
+        max_output_tokens=350,
+    )
+    for current_model in models_pool:
+        try:
+            response = _retry_request(
+                client=client,
+                model=current_model,
+                contents=short_text,
+                config=config,
+            )
+            if response and response.text:
+                return response.text.strip()
+            return short_text
+        except APIError as e:
+            is_critical = getattr(e, "code", None) in [429, 503] or "429" in str(e) or "503" in str(e)
+
+            if current_model == models_pool[-1] or not is_critical:
+                if getattr(e, "code", None) == 429 or "429" in str(e):
+                    return "\n\033[31m[Exhaustion Limit] Google has limited requests. Please wait 30-60 seconds.\033[0m"
+                return f"\033[31mGemini API Error (Status {e.code}): {e.message}\033[0m"
+
+            print(f"\033[33m[Fallback] {current_model} failed (Status {e.code}). Switching to backup model...\033[0m")
+            continue
+
+        except Exception as e:
+            if current_model == models_pool[-1]:
+                return f"Unexpected error: {e}"
+            continue
 
 
 def main():
