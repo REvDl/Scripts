@@ -15,6 +15,11 @@ parser.add_argument(
     default=None,
     help="Transcription language (default from .env)",
 )
+parser.add_argument(
+    "--config",
+    action="store_true",
+    help="Force re-configure API key and language"
+)
 args = parser.parse_args()
 
 
@@ -91,11 +96,14 @@ def decode_slang(client: genai.Client, short_text:str, target_lang: str):
 
 def main():
     env_file = CONFIG_DIR / ".env"
-    if not env_file.exists():
-        print(f"Config file not found. Creating one at {env_file}")
+    if not env_file.exists() or args.config:
+        print(f"Creating config file at {env_file}")
         api_key = input("Enter your Gemini API Key: ").strip()
         lang = input("Enter default language: ").strip() or "English"
         env_file.write_text(f"API_KEY={api_key}\nUSER_LANGUAGE={lang}\n", encoding="utf-8")
+        if args.config and not args.text:
+            print("Configuration updated successfully!")
+            return
     global settings
     settings = Settings()
     if not settings.API_KEY:
