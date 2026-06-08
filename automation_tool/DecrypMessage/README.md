@@ -1,99 +1,164 @@
-```text
+```
  ██████╗ ███████╗ ██████╗██████╗ ██╗   ██╗██████╗ ████████╗
  ██╔══██╗██╔════╝██╔════╝██╔══██╗╚██╗ ██╔╝██╔══██╗╚══██╔══╝
- ██║  ██║█████╗  ██║     ██████╔╝ ╚████╔╝ ██████╔╝   ██║   
- ██║  ██║██╔══╝  ██║     ██╔══██╗  ╚██╔╝  ██╔═══╝    ██║   
- ██████╔╝███████╗╚██████╗██║  ██║   ██║   ██║        ██║   
- ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝        ╚═╝   
+ ██║  ██║█████╗  ██║     ██████╔╝ ╚████╔╝ ██████╔╝   ██║
+ ██║  ██║██╔══╝  ██║     ██╔══██╗  ╚██╔╝  ██╔═══╝    ██║
+ ██████╔╝███████╗╚██████╗██║  ██║   ██║   ██║        ██║
+ ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝        ╚═╝
 ```
 
-AI-powered CLI utility providing an operational bridge between natural language instructions, automatic Git commit generation, and contextual slang decoding using the Google Gemini API. Built for high performance and strict output isolation.
+AI-powered CLI tool that connects natural language with developer workflows:
+
+- Git commit generation
+- Shell command generation
+- Slang / abbreviation decoding
+
+Powered by Google Gemini API.
+
+---
 
 ## Features
 
-- **Automated Commit Generation (Default Mode):** Automatically extracts and staging-analyses active local diffs via `git diff --staged` to generate professional, clean Conventional Commits messages.
-- **Natural Language Shell Commands (`-s` / `--shell`):** Converts loose technical intents into valid, optimized, executable Bash or cross-platform terminal commands.
-- **Accurate Slang & Internet Abbreviation Decoder (`-sl` / `--slang`):** Recovers structure, expands short forms, and normalizes text lacking vowels or proper grammar into standard text for specified target languages.
-- **Fault-Tolerant Fallback System:** Uses a multi-model architecture pool (`gemini-2.5-flash` -> `gemini-2.5-flash-lite`) combined with exponential backoff retries via `tenacity` to stay operational during 429 quota limits or 503 errors.
+### Commit Generator (default mode)
+Generates Conventional Commit messages from:
+- staged git diff (`git diff --staged`)
+- or manual input text
+
+Example:
+```bash
+git add .
+decrypt
+```
+
+or:
+```bash
+decrypt "fix auth bug in jwt middleware"
+```
+
+---
+
+### Shell Command Generator
+Convert natural language into executable terminal commands.
+
+```bash
+decrypt -s "find all png files larger than 10MB and delete them"
+```
+
+---
+
+### Slang Decoder
+Expands internet slang and shorthand into readable text.
+
+```bash
+decrypt -sl "hru btw idk"
+```
+
+---
+
+### Interactive Mode
+Run without arguments:
+
+```bash
+decrypt
+```
+
+---
 
 ## Installation
 
+### From PyPI
 ```bash
-git clone [https://github.com/REvDl/Scripts.git](https://github.com/REvDl/Scripts.git)
+pip install decrypt
+```
+
+### Recommended (CLI isolation)
+```bash
+pipx install decrypt
+```
+
+### Local install
+```bash
+git clone https://github.com/REvDl/Scripts.git
 cd Scripts/automation_tool/DecrypMessage
 pip install .
 ```
 
+---
+
 ## Configuration
 
-On the initial execution, the application will automatically prompt you to enter your **Gemini API Key** and preferred **default language**. These credentials are saved to a local configuration file.
+On first run:
+- Gemini API key
+- Default language
 
-- **Storage Location:** `~/.config/decrypt/.env`
-- **Manual Reset Command:** `decrypt --config`
-
-## Technical Reference & CLI Arguments
-
-```text
-usage: decrypt [-h] [--lang LANG] [--config] [-sl] [-s] [-c] [text]
-
-AI-powered CLI tool
-• Conventional Commits
-• Shell Commands
-• Slang Decoder
-
-positional arguments:
-  text           Optional text input. Commit mode (default): if empty, uses git diff; 
-                 if provided, generates commit from this description.
-
-options:
-  -h, --help     show this help message and exit
-  --lang LANG    Transcription language (default from .env)
-  --config       Force re-configure API key and language
-  -sl, --slang   Mode: Accurately expand and decipher internet abbreviations and slang
-  -s, --shell    Mode: Generate an executable shell command from natural language
-  -c, --commit   Mode: Generate Git commit message from text or staged diffs (default)
+Stored at:
+```
+~/.config/decrypt/.env
 ```
 
-## Usage Examples
-
-### 1. Generating Conventional Commits
-
-Stage your local changes and execute the default command pipeline:
-
+Reset:
 ```bash
-git add src/core.py
+decrypt --config
+```
+
+---
+
+## CLI Usage
+
+```
+usage: decrypt [-h] [--lang LANG] [--config] [-sl] [-s] [-c] [text]
+
+positional arguments:
+  text          input text or git diff
+
+options:
+  -h, --help    show help
+  --lang LANG   output language
+  --config      reconfigure API key and language
+  -sl, --slang  decode slang
+  -s, --shell   generate shell command
+  -c, --commit  generate commit message
+```
+
+---
+
+## Examples
+
+Commit:
+```bash
+git add .
 decrypt
 ```
 
-Alternatively, pass raw text input directly through standard arguments to format a manual draft:
-
+Shell:
 ```bash
-decrypt "fixed a broken connections pooling bug inside the database wrapper"
+decrypt -s "kill all processes on port 3000"
 ```
 
-### 2. Translating Natural Language to Terminal Syntax
-
+Slang:
 ```bash
-decrypt -s "find all json files in the current folder larger than 50 megabytes and delete them"
+decrypt -sl "idk brb hru"
 ```
 
-### 3. Expanding Slang / Chat History
+---
 
-```bash
-decrypt -sl "hru btw" --lang "English"
-```
+## Why
 
-### 4. Interactive Mode (REPL)
+Developers constantly:
+- write commit messages manually
+- translate natural language into shell commands
+- decode slang and shorthand text
 
-Executing the engine without positional string parameters drops down into a low-overhead, persistent shell environment running standard loops:
+This tool unifies all of that into a single CLI.
 
-```bash
-decrypt -s
-```
+---
 
-```text
-Interactive mode (SHELL). Language: English. Type 'exit' to quit.
-> list all docker containers running on port 80
-docker ps --filter "publish=80"
-> 
-```
+## Tech Stack
+
+- Python 3.10+
+- Google Gemini API
+- Tenacity
+- Pydantic Settings
+- argparse
+
+---
