@@ -46,7 +46,7 @@ args = parser.parse_args()
 
 
 HOME_DIR = Path.home()
-CONFIG_DIR = HOME_DIR / ".config" / "decryp"
+CONFIG_DIR = HOME_DIR / ".config" / "decrypt"
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 class Settings(BaseSettings):
     API_KEY: str | None = None
@@ -86,7 +86,6 @@ def _retry_request(client, model, contents, config):
     return client.models.generate_content(
         model=model, contents=contents, config=config
     )
-
 PROMPTS = {
     "commit": (
         "You are an expert Git assistant. Your task is to generate a highly professional commit message "
@@ -109,7 +108,7 @@ PROMPTS = {
     )
 }
 def decode_response(client: genai.Client, short_text:str, mode:str, target_lang: str):
-    models_pool = ["gemini-2.5-flash-lite", "gemini-2.5-flash"]
+    models_pool = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
     system_instruction = PROMPTS[mode]
     if mode == "slang":
         system_instruction = system_instruction.format(target_lang=target_lang)
@@ -146,6 +145,7 @@ def decode_response(client: genai.Client, short_text:str, mode:str, target_lang:
                 return f"Unexpected error: {e}"
             continue
 
+
 def get_git_diff():
     try:
         result = subprocess.run(
@@ -157,6 +157,23 @@ def get_git_diff():
         return result.stdout.strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
+
+GREEN = "\033[92m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
+RST = "\033[0m"
+BANNER = f"""{GREEN}{BOLD}
+ ██████╗ ███████╗ ██████╗██████╗ ██╗   ██╗██████╗ ████████╗
+ ██╔══██╗██╔════╝██╔════╝██╔══██╗╚██╗ ██╔╝██╔══██╗╚══██╔══╝
+ ██║  ██║█████╗  ██║     ██████╔╝ ╚████╔╝ ██████╔╝   ██║   
+ ██║  ██║██╔══╝  ██║     ██╔══██╗  ╚██╔╝  ██╔═══╝    ██║   
+ ██████╔╝███████╗╚██████╗██║  ██║   ██║   ██║        ██║   
+ ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝        ╚═╝   {RST}
+  {DIM}AI-powered CLI tool: Conventional Commits · Shell Commands · Slang Decoder{RST}
+  {DIM}v1.1 Author: github.com/REvDl{RST}
+"""
+
+
 def main():
     env_file = CONFIG_DIR / ".env"
     if not env_file.exists() or args.config:
@@ -197,6 +214,7 @@ def main():
         return
 
     else:
+        print(BANNER)
         if mode == "commit":
             print("\033[33m[Git Notice] No staged changes found. Starting interactive mode...\033[0m")
         try:
