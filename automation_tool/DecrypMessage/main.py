@@ -175,14 +175,35 @@ def main():
     target_language = args.lang if args.lang is not None else settings.USER_LANGUAGE
 
     client = genai.Client(api_key=settings.API_KEY)
-    if args.text:
-        print(decode_slang(client, args.text, target_language))
+    if args.slang:
+        mode = "slang"
+    elif args.shell:
+        mode = "shell"
+    elif args.commit:
+        mode = "commit"
     else:
+        mode = "commit"
+    diff = None
+    if mode == "commit" and not args.text:
+        diff = get_git_diff()
+
+    if args.text or diff:
+        input_data = args.text
+        if mode == "commit" and not input_data:
+            input_data = f"Generate commit message for this diff:\n{diff}"
+
+        result = decode_response(client, input_data, mode, target_language)
+        print(result)
+        return
+
+    else:
+        if mode == "commit":
+            print("\033[33m[Git Notice] No staged changes found. Starting interactive mode...\033[0m")
         try:
             import readline
         except ImportError:
             pass
-        print(f"Interactive mode. Language: {target_language}. Type 'exit' to quit.")
+        print(f"Interactive mode ({mode.upper()}). Language: {target_language}. Type 'exit' to quit.")
         while True:
             try:
                 user_text = input("> ")
@@ -190,7 +211,7 @@ def main():
                     break
                 if not user_text.strip():
                     continue
-                result = decode_slang(client, user_text, target_language)
+                result = decode_response(client, user_text, mode, target_language)
                 print(f"\033[92m{result}\033[0m")
             except (KeyboardInterrupt, EOFError):
                 print()
