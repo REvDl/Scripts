@@ -1,13 +1,20 @@
 import argparse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
+import subprocess
 
 #parser
 parser = argparse.ArgumentParser(
-    description="CLI utility for deciphering internet abbreviations using the Gemini API."
+    description=(
+        "AI-powered CLI tool\n" 
+        "• Conventional Commits\n"
+        "• Shell Commands\n"
+        "• Slang Decoder"
+    ),
+    formatter_class=argparse.RawDescriptionHelpFormatter
 )
 parser.add_argument(
-    "text", nargs="?", type=str, help="Abbreviated text to be deciphered"
+    "text", nargs="?", type=str,     help="Optional text input. Commit mode (default): if empty, uses git diff; if provided, generates commit from this description."
 )
 parser.add_argument(
     "--lang",
@@ -19,6 +26,21 @@ parser.add_argument(
     "--config",
     action="store_true",
     help="Force re-configure API key and language"
+)
+parser.add_argument(
+    "-sl", "--slang",
+    action="store_true",
+    help="Mode: Accurately expand and decipher internet abbreviations and slang",
+)
+parser.add_argument(
+    "-s", "--shell",
+    action="store_true",
+    help="Mode: Generate an executable shell command from natural language"
+)
+parser.add_argument(
+    "-c", "--commit",
+    action="store_true",
+    help="Mode: Generate Git commit message from text or staged diffs (default)"
 )
 args = parser.parse_args()
 
