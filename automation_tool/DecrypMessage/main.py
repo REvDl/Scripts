@@ -1,7 +1,8 @@
 import argparse
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 
-
-
+#parser
 parser = argparse.ArgumentParser(
     description="CLI utility for deciphering internet abbreviations using the Gemini API."
 )
@@ -17,21 +18,13 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-
-from google import genai
-from google.genai import types
-from google.genai.errors import APIError
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
-from pathlib import Path
-
 HOME_DIR = Path.home()
 CONFIG_DIR = HOME_DIR / ".config" / "decryp"
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 class Settings(BaseSettings):
-    API_KEY: str
-    USER_LANGUAGE: str
-    model_config = SettingsConfigDict(env_file=CONFIG_DIR / ".env", env_file_encoding="utf-8")
+    API_KEY: str | None = None
+    USER_LANGUAGE: str | None = "English"
+    model_config = SettingsConfigDict(env_file=CONFIG_DIR / ".env", env_file_encoding="utf-8", extra="ignore")
 
 
 settings = Settings()
@@ -95,13 +88,27 @@ def decode_slang(client: genai.Client, short_text:str, target_lang: str):
 
 
 def main():
+    env_file = CONFIG_DIR / ".env"
+    if not env_file.exists():
+        print(f"Config file not found. Creating one at {env_file}")
+        api_key = input("Enter your Gemini API Key: ").strip()
+        lang = input("Enter default language: ").strip() or "English"
+        env_file.write_text(f"API_KEY={api_key}\nUSER_LANGUAGE={lang}\n", encoding="utf-8")
+    global settings
+    settings = Settings()
     if not settings.API_KEY:
         print("Error. API KEY is missing")
         return
+    target_language = args.lang if args.lang is not None else settings.USER_LANGUAGE
+
     client = genai.Client(api_key=settings.API_KEY)
     if args.text:
         print(decode_slang(client, args.text, target_language))
     else:
+        try:
+            import readline
+        except ImportError:
+            pass
         print(f"Interactive mode. Language: {target_language}. Type 'exit' to quit.")
         while True:
             try:
@@ -110,8 +117,10 @@ def main():
                     break
                 if not user_text.strip():
                     continue
-                print(decode_slang(client, user_text, target_language))
+                result = decode_slang(client, user_text, target_language)
+                print(f"\033[92m{result}\033[0m")
             except (KeyboardInterrupt, EOFError):
+                print()
                 break
 
 if __name__ == "__main__":
