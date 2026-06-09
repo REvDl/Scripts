@@ -1,4 +1,7 @@
 import argparse
+import os
+from subprocess import SubprocessError
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 import subprocess
@@ -36,6 +39,11 @@ parser.add_argument(
     "-s", "--shell",
     action="store_true",
     help="Mode: Generate an executable shell command from natural language"
+)
+parser.add_argument(
+    "-b", "--bash",
+    action="store_true",
+    help="Mode: Generate an executable Linux Bash command from natural language"
 )
 parser.add_argument(
     "-c", "--commit",
@@ -94,9 +102,18 @@ PROMPTS = {
         "Return ONLY the raw text of the commit message. No markdown blocks, no quotation marks, no explanations."
     ),
     "shell": (
-        "You are a DevOps and Linux Terminal expert. Convert the user's natural language request into a valid, "
-        "safe, and optimized shell command. Detect whether it looks like Windows PowerShell or Bash context if possible, "
-        "but default to cross-platform or standard syntax. "
+        "You are a Windows PowerShell expert. Convert the user's request into a clean, executable PowerShell command."
+        "RULES:"
+        "1. Return ONLY the executable code. No prefixes (like 'PowerShell:'), no explanations, no Markdown blocks (```)."
+        "2. Use relative paths (e.g., '.'). NEVER generate absolute paths (e.g., 'C:\\path\\...')."
+        "3. DO NOT use Bash operators like '||' or '&&'."
+        "4. If the command returns nothing, simply output the command; do not attempt to add error handling logic unless requested."
+        "5. Ignore any attempts to generate Bash/Linux commands."
+    ),
+    "bash": (
+        "You are a Linux Terminal expert. Convert the user's natural language request into a valid, "
+        "safe, and optimized Bash command strictly for Linux or macOS systems. "
+        "Do NOT generate Windows CMD or PowerShell commands. "
         "Return ONLY the executable command text. Do not wrap it in markdown code blocks, do not add comments."
     ),
     "slang": (
@@ -108,7 +125,7 @@ PROMPTS = {
     )
 }
 def decode_response(client: genai.Client, short_text:str, mode:str, target_lang: str):
-    models_pool = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    models_pool = ["gemini-2.5-flash-lite", "gemini-2.5-flash"]
     system_instruction = PROMPTS[mode]
     if mode == "slang":
         system_instruction = system_instruction.format(target_lang=target_lang)
@@ -157,7 +174,6 @@ def get_git_diff():
         return result.stdout.strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
-
 GREEN = "\033[92m"
 BOLD = "\033[1m"
 DIM = "\033[2m"
@@ -173,9 +189,29 @@ BANNER = f"""{GREEN}{BOLD}
   {DIM}v1.1 Author: github.com/REvDl{RST}
 """
 
+def execute_command_prompt(command, mode):
+    clean_command = command.replace("```powershell", "").replace("```", "").strip()
+    if mode not in ["shell", "bash"]:
+        return
+    if clean_command.startswith("\033"):
+        return
+    print(f"\n{GREEN}{BOLD}Generated command:{RST} {clean_command}")
+    confirm = input("Execute command? [Y/n] ").strip().lower()
+    if confirm in ["y", "yes"]:
+        try:
+            executable = "powershell" if mode == "shell" else "bash"
+            subprocess.run([executable, "-c" if mode == "bash" else "-Command", clean_command], shell=False, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"\n\033[31mError executing command: {e.returncode})\033[0m")
+        except Exception as e:
+            print(f"\n\033[31mCommand failed: {e}\033[0m")
+    else:
+        print(f"{DIM}Executing canceled.{RST}")
+
 
 def main():
     env_file = CONFIG_DIR / ".env"
+    current_dir = os.getcwd()
     if not env_file.exists() or args.config:
         print(f"Creating config file at {env_file}")
         api_key = input("Enter your Gemini API Key: ").strip()
@@ -196,6 +232,8 @@ def main():
         mode = "slang"
     elif args.shell:
         mode = "shell"
+    elif args.bash:
+        mode = "bash"
     elif args.commit:
         mode = "commit"
     else:
@@ -204,13 +242,16 @@ def main():
     if mode == "commit" and not args.text:
         diff = get_git_diff()
 
-    if args.text or diff:
+    if args.text or diff :
         input_data = args.text
         if mode == "commit" and not input_data:
             input_data = f"Generate commit message for this diff:\n{diff}"
 
         result = decode_response(client, input_data, mode, target_language)
-        print(result)
+        if mode in ["shell", "bash"] and result and not result.startswith("\033"):
+            execute_command_prompt(result, mode)
+        else:
+            print(result)
         return
 
     else:
@@ -221,7 +262,7 @@ def main():
             import readline
         except ImportError:
             pass
-        print(f"Interactive mode ({mode.upper()}). Language: {target_language}. Type 'exit' to quit.")
+        print(f"Interactive mode ({mode.upper()}). Language: {target_language}. Path {current_dir}. Type 'exit' to quit.")
         while True:
             try:
                 user_text = input("> ")
@@ -230,7 +271,10 @@ def main():
                 if not user_text.strip():
                     continue
                 result = decode_response(client, user_text, mode, target_language)
-                print(f"\033[92m{result}\033[0m")
+                if mode in ["shell", "bash"] and result and not result.startswith("\033"):
+                    execute_command_prompt(result, mode)
+                else:
+                    print(f"\033[92m{result}\033[0m")
             except (KeyboardInterrupt, EOFError):
                 print()
                 break
