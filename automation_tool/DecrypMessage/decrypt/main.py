@@ -191,10 +191,6 @@ BANNER = f"""{GREEN}{BOLD}
 
 def execute_command_prompt(command, mode):
     clean_command = command.replace("```powershell", "").replace("```", "").strip()
-    if mode not in ["shell", "bash"]:
-        return
-    if clean_command.startswith("\033"):
-        return
     print(f"\n{GREEN}{BOLD}Generated command:{RST} {clean_command}")
     confirm = input("Execute command? [Y/n] ").strip().lower()
     if confirm in ["y", "yes"]:
@@ -209,9 +205,29 @@ def execute_command_prompt(command, mode):
         print(f"{DIM}Executing canceled.{RST}")
 
 
-def main():
+
+def process_commit(message:str):
+    print(f"\n{BOLD}Generated commit:{RST}\n{message}")
+    confirm = input("Run 'git commit -m \"...\"'? [Y/n] ").strip().lower()
+    if confirm in ["y", "yes"]:
+        subprocess.run(["git", "commit", "-m", message])
+
+
+
+def handle_result(result:str, mode:str) -> None:
+    if result.startswith("\033[31m"):
+        print(result)
+        return
+    if mode in ["shell", "bash"]:
+        execute_command_prompt(result, mode)
+    elif mode == "commit":
+        process_commit(result)
+    else:
+        print(f"\033[92m{result}\033[0m")
+
+
+def setup_config():
     env_file = CONFIG_DIR / ".env"
-    current_dir = os.getcwd()
     if not env_file.exists() or args.config:
         print(f"Creating config file at {env_file}")
         api_key = input("Enter your Gemini API Key: ").strip()
@@ -219,41 +235,31 @@ def main():
         env_file.write_text(f"API_KEY={api_key}\nUSER_LANGUAGE={lang}\n", encoding="utf-8")
         if args.config and not args.text:
             print("Configuration updated successfully!")
-            return
-    global settings
-    settings = Settings()
-    if not settings.API_KEY:
+            exit(0)
+    new_settings = Settings()
+    if not new_settings.API_KEY:
         print("Error. API KEY is missing")
-        return
-    target_language = args.lang if args.lang is not None else settings.USER_LANGUAGE
+        exit(1)
+    return new_settings
 
+def get_mode():
+    mode = next((m for m in ["slang", "shell", "bash", "commit"] if getattr(args, m)), "commit")
+    return mode
+
+
+def main():
+    settings = setup_config()
+    current_dir = os.getcwd()
+    target_language = args.lang or settings.USER_LANGUAGE
     client = genai.Client(api_key=settings.API_KEY)
-    if args.slang:
-        mode = "slang"
-    elif args.shell:
-        mode = "shell"
-    elif args.bash:
-        mode = "bash"
-    elif args.commit:
-        mode = "commit"
-    else:
-        mode = "commit"
+    mode = get_mode()
     diff = None
-    if mode == "commit" and not args.text:
-        diff = get_git_diff()
 
-    if args.text or diff :
-        input_data = args.text
-        if mode == "commit" and not input_data:
-            input_data = f"Generate commit message for this diff:\n{diff}"
-
+    if args.text or (mode == "commit" and (diff := get_git_diff())):
+        input_data = f"Generate commit message for this diff:\n{diff}" if diff else f"Generate commit message this text: {args.text}"
         result = decode_response(client, input_data, mode, target_language)
-        if mode in ["shell", "bash"] and result and not result.startswith("\033"):
-            execute_command_prompt(result, mode)
-        else:
-            print(result)
+        handle_result(result, mode)
         return
-
     else:
         print(BANNER)
         if mode == "commit":
@@ -265,18 +271,12 @@ def main():
         print(f"Interactive mode ({mode.upper()}). Language: {target_language}. Path {current_dir}. Type 'exit' to quit.")
         while True:
             try:
-                user_text = input("> ")
-                if user_text.lower() in ["exit", "break"]:
-                    break
-                if not user_text.strip():
-                    continue
+                user_text = input(f"[{mode.upper()}] > ")
+                if user_text.lower() in ["exit", "break"]: break
+                if not user_text.strip(): continue
                 result = decode_response(client, user_text, mode, target_language)
-                if mode in ["shell", "bash"] and result and not result.startswith("\033"):
-                    execute_command_prompt(result, mode)
-                else:
-                    print(f"\033[92m{result}\033[0m")
+                handle_result(result, mode)
             except (KeyboardInterrupt, EOFError):
-                print()
                 break
 
 if __name__ == "__main__":
