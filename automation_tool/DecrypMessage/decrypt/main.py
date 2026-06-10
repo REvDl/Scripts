@@ -50,6 +50,11 @@ parser.add_argument(
     action="store_true",
     help="Mode: Generate Git commit message from text or staged diffs (default)"
 )
+parser.add_argument(
+    "-a", "--auto",
+    action="store_true",
+    help="Auto-execute mode (skips confirmation prompts)"
+)
 args = parser.parse_args()
 
 
@@ -186,42 +191,55 @@ BANNER = f"""{GREEN}{BOLD}
  ██████╔╝███████╗╚██████╗██║  ██║   ██║   ██║        ██║   
  ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝        ╚═╝   {RST}
   {DIM}AI-powered CLI tool: Conventional Commits · Shell Commands · Slang Decoder{RST}
-  {DIM}v1.1 Author: github.com/REvDl{RST}
+  {DIM}v1.1.3 Author: github.com/REvDl{RST}
 """
 
-def execute_command_prompt(command, mode):
+def execute_command_prompt(command:str, mode:str, auto=False):
     clean_command = command.replace("```powershell", "").replace("```", "").strip()
+    executable = "powershell" if mode == "shell" else "bash"
     print(f"\n{GREEN}{BOLD}Generated command:{RST} {clean_command}")
-    confirm = input("Execute command? [Y/n] ").strip().lower()
-    if confirm in ["y", "yes"]:
-        try:
-            executable = "powershell" if mode == "shell" else "bash"
-            subprocess.run([executable, "-c" if mode == "bash" else "-Command", clean_command], shell=False, check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"\n\033[31mError executing command: {e.returncode})\033[0m")
-        except Exception as e:
-            print(f"\n\033[31mCommand failed: {e}\033[0m")
+    if not auto:
+        confirm = input("Execute command? [Y/n] ").strip().lower()
+        if confirm in ["y", "yes"]:
+            try:
+                subprocess.run([executable, "-c" if mode == "bash" else "-Command", clean_command], shell=False, check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"\n\033[31mError executing command: {e.returncode})\033[0m")
+            except Exception as e:
+                print(f"\n\033[31mCommand failed: {e}\033[0m")
+        else:
+            print(f"{DIM}Executing canceled.{RST}")
     else:
-        print(f"{DIM}Executing canceled.{RST}")
+        subprocess.run([executable, "-c" if mode == "bash" else "-Command", clean_command], shell=False, check=True)
 
 
-
-def process_commit(message:str):
+def process_commit(message: str, auto=False):
     print(f"\n{BOLD}Generated commit:{RST}\n{message}")
-    confirm = input("Run 'git commit -m \"...\"'? [Y/n] ").strip().lower()
-    if confirm in ["y", "yes"]:
-        subprocess.run(["git", "commit", "-m", message])
+    if not auto:
+        confirm = input("Run 'git commit -m \"...\"'? [Y/n] ").strip().lower()
+        if confirm not in ["y", "yes"]:
+            print(f"{DIM}Commit canceled.{RST}")
+            return
+    print(f"{GREEN}Executing: git commit...{RST}")
+    subprocess.run(["git", "commit", "-m", message], check=True)
+    if not auto:
+        confirm_push = input("Run 'git push'? [Y/n] ").strip().lower()
+        if confirm_push not in ["y", "yes"]:
+            print(f"{DIM}Push canceled.{RST}")
+            return
+    print(f"{GREEN}Executing: git push...{RST}")
+    subprocess.run(["git", "push"], check=True)
 
 
 
-def handle_result(result:str, mode:str) -> None:
+def handle_result(result:str, mode:str, auto=False) -> None:
     if result.startswith("\033[31m"):
         print(result)
         return
     if mode in ["shell", "bash"]:
-        execute_command_prompt(result, mode)
+        execute_command_prompt(result, mode, auto)
     elif mode == "commit":
-        process_commit(result)
+        process_commit(result, auto)
     else:
         print(f"\033[92m{result}\033[0m")
 
@@ -254,11 +272,11 @@ def main():
     client = genai.Client(api_key=settings.API_KEY)
     mode = get_mode()
     diff = None
-
+    auto = True if args.auto else False
     if args.text or (mode == "commit" and (diff := get_git_diff())):
         input_data = f"Generate commit message for this diff:\n{diff}" if diff else f"Generate commit message this text: {args.text}"
         result = decode_response(client, input_data, mode, target_language)
-        handle_result(result, mode)
+        handle_result(result, mode, auto)
         return
     else:
         print(BANNER)
@@ -275,7 +293,7 @@ def main():
                 if user_text.lower() in ["exit", "break"]: break
                 if not user_text.strip(): continue
                 result = decode_response(client, user_text, mode, target_language)
-                handle_result(result, mode)
+                handle_result(result, mode, auto)
             except (KeyboardInterrupt, EOFError):
                 break
 
