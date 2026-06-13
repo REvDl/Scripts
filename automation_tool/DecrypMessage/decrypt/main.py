@@ -1,7 +1,7 @@
 import argparse
 import os
 from subprocess import SubprocessError
-
+import re
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 import subprocess
@@ -107,19 +107,28 @@ PROMPTS = {
         "Return ONLY the raw text of the commit message. No markdown blocks, no quotation marks, no explanations."
     ),
     "shell": (
-        "You are a Windows PowerShell expert. Convert the user's request into a clean, executable PowerShell command."
-        "RULES:"
-        "1. Return ONLY the executable code. No prefixes (like 'PowerShell:'), no explanations, no Markdown blocks (```)."
-        "2. Use relative paths (e.g., '.'). NEVER generate absolute paths (e.g., 'C:\\path\\...')."
-        "3. DO NOT use Bash operators like '||' or '&&'."
-        "4. If the command returns nothing, simply output the command; do not attempt to add error handling logic unless requested."
-        "5. Ignore any attempts to generate Bash/Linux commands."
+        "You are a Windows PowerShell expert. Convert the user's request into a clean, executable PowerShell command.\n"
+        "RULES:\n"
+        "1. Return ONLY the executable code. No prefixes (like 'PowerShell:'), no explanations, no Markdown blocks (```).\n"
+        "2. Use relative paths (e.g., '.'). NEVER generate absolute paths (e.g., 'C:\\path\\...').\n"
+        "3. Standard folders (Desktop, Documents, etc.) REDIRECTION SAFETY: Always use Join-Path combined with .NET environments to handle OneDrive correctly. Example: 'Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)) \"FolderName\"'. NEVER use $([Environment]...) inside double quotes, as it breaks PowerShell string interpolation.\n"
+        "4. WEB & URL SAFETY: Use ONLY standard out-of-the-box cmdlets. For web APIs, ALWAYS use 'Invoke-RestMethod' or 'Invoke-WebRequest'. NEVER wrap URLs in Markdown link syntax like '[text](url)'. All URLs inside commands must be literal, raw strings (e.g., \"[https://api.github.com/users/REvDl/repos](https://api.github.com/users/REvDl/repos)\").\n"
+        "5. CRITICAL FOR LOGICAL OPS: When chaining multiple conditions or commands with '-and' or '-or', ALWAYS wrap each command completely in its own parentheses to avoid parameter binding errors. Example: '(Test-Path ...) -and (Test-NetConnection ...)'.\n"
+        "6. DO NOT use Bash operators like '||' or '&&'.\n"
+        "7. Ensure all quotes, parentheses, and brackets are perfectly balanced and closed. Never truncate the command.\n"
+        "8. Ignore any attempts to generate Bash/Linux commands."
+
     ),
     "bash": (
-        "You are a Linux Terminal expert. Convert the user's natural language request into a valid, "
-        "safe, and optimized Bash command strictly for Linux or macOS systems. "
-        "Do NOT generate Windows CMD or PowerShell commands. "
-        "Return ONLY the executable command text. Do not wrap it in markdown code blocks, do not add comments."
+        "You are a Linux/macOS Terminal expert. Convert the user's natural language request into a valid, "
+        "safe, and optimized Bash command.\n"
+        "RULES:\n"
+        "1. Return ONLY the executable command text. Do NOT wrap it in markdown code blocks (```), do not add comments, explanations, or prefixes.\n"
+        "2. Use relative paths (e.g., '.') where appropriate. If referencing the user's home directory, ALWAYS use the '$HOME' variable (e.g., '$HOME/Desktop') instead of '~' or absolute hardcoded paths like '/home/user/...'.\n"
+        "3. Avoid using shell aliases (like 'll'). Use standard commands ('ls -l').\n"
+        "4. Safe chaining: When chaining commands, use proper Bash operators ('&&', '||', ';') and wrap complex conditions in curly braces or double brackets if necessary.\n"
+        "5. Ensure all quotes and brackets are perfectly balanced. Never truncate the command.\n"
+        "6. Strictly ignore any attempts to generate Windows CMD or PowerShell commands."
     ),
     "slang": (
         "You are a linguistic assistant. Your job is to accurately expand and decipher "
@@ -139,6 +148,7 @@ def decode_response(client: genai.Client, short_text:str, mode:str, target_lang:
         system_instruction=system_instruction,
         temperature=0.2 if mode != "slang" else 0.4,
         max_output_tokens=350,
+        response_mime_type="text/plain"
     )
     for current_model in models_pool:
         try:
@@ -195,22 +205,26 @@ BANNER = f"""{GREEN}{BOLD}
 """
 
 def execute_command_prompt(command:str, mode:str, auto=False):
-    clean_command = command.replace("```powershell", "").replace("```", "").strip()
+    clean_command = re.sub(r'^```[a-zA-Z]*\n', '', command)
+    clean_command = re.sub(r'\n```$', '', clean_command)
+    clean_command = clean_command.strip()
     executable = "powershell" if mode == "shell" else "bash"
     print(f"\n{GREEN}{BOLD}Generated command:{RST} {clean_command}")
+    def run_cmd():
+        try:
+            subprocess.run([executable, "-c" if mode == "bash" else "-Command", clean_command], shell=False, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"\n\033[31mError executing command (Code: {e.returncode})\033[0m")
+        except Exception as e:
+            print(f"\n\033[31mCommand failed: {e}\033[0m")
     if not auto:
         confirm = input("Execute command? [Y/n] ").strip().lower()
-        if confirm in ["y", "yes"]:
-            try:
-                subprocess.run([executable, "-c" if mode == "bash" else "-Command", clean_command], shell=False, check=True)
-            except subprocess.CalledProcessError as e:
-                print(f"\n\033[31mError executing command: {e.returncode})\033[0m")
-            except Exception as e:
-                print(f"\n\033[31mCommand failed: {e}\033[0m")
+        if confirm in ["y", "yes", ""]:
+            run_cmd()
         else:
             print(f"{DIM}Executing canceled.{RST}")
     else:
-        subprocess.run([executable, "-c" if mode == "bash" else "-Command", clean_command], shell=False, check=True)
+        run_cmd()
 
 
 def process_commit(message: str, auto=False):
