@@ -15,7 +15,11 @@ AI-powered CLI tool that connects natural language with developer workflows:
 Powered by Google Gemini API.
 
 ---
-
+## New in v1.1.4
+- **Self-Healing** - Failed commands are automatically corrected by AI
+- **Dry-Run Mode** - Test commands safely with `--dry-run`
+- **Dangerous Command Blocking** - Protection against rm -rf, fork bombs, etc.
+- **30s Timeout** - Commands can't hang indefinitely
 ## Features
 
 ### 1. Commit Generator (default mode)
@@ -58,7 +62,7 @@ Expands internet slang, abbreviations, and vowel-less text into readable text.
 decrypt -sl "hru btw idk"
 ```
 
----
+--- 
 
 ### 4. Interactive Mode
 Run without input arguments to start a loop:
@@ -68,6 +72,13 @@ decrypt
 ```
 
 ---
+### Dry-Run Mode (--dry-run)
+
+Only generates output, never executes anything.
+```bash
+decrypt --dry-run -s "delete all node_modules folders"
+decrypt --dry-run -c "add caching layer for api"
+```
 
 ## Installation
 
@@ -107,7 +118,7 @@ decrypt --config
 ## CLI Usage
 
 ```
-usage: decrypt.exe [-h] [--lang LANG] [--config] [-sl] [-s] [-b] [-c] [-a] [text]
+usage: decrypt.exe [-h] [--lang LANG] [--config] [-sl] [-s] [-b] [-c] [-dr] [-a] [text]
 
 AI-powered CLI tool
 • Conventional Commits
@@ -115,17 +126,18 @@ AI-powered CLI tool
 • Slang Decoder
 
 positional arguments:
-  text          Optional text input. Commit mode (default): if empty, uses git diff; if provided, generates commit from this description.
+  text            Optional text input. Commit mode (default): if empty, uses git diff; if provided, generates commit from this description.
 
 options:
-  -h, --help    show this help message and exit
-  --lang LANG   Transcription language (default from .env)
-  --config      Force re-configure API key and language
-  -sl, --slang  Mode: Accurately expand and decipher internet abbreviations and slang
-  -s, --shell   Mode: Generate an executable shell command from natural language
-  -b, --bash    Mode: Generate an executable Linux Bash command from natural language
-  -c, --commit  Mode: Generate Git commit message from text or staged diffs (default)
-  -a, --auto    Auto-execute mode (skips confirmation prompts)
+  -h, --help      show this help message and exit
+  --lang LANG     Transcription language (default from .env)
+  --config        Force re-configure API key and language
+  -sl, --slang    Mode: Accurately expand and decipher internet abbreviations and slang
+  -s, --shell     Mode: Generate an executable shell command from natural language
+  -b, --bash      Mode: Generate an executable Linux Bash command from natural language
+  -c, --commit    Mode: Generate Git commit message from text or staged diffs (default)
+  -dr, --dry-run  Mode: generating commands without executing them
+  -a, --auto      Auto-execute mode (skips confirmation prompts)
 ```
 
 ---
