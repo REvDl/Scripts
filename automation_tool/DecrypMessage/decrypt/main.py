@@ -51,6 +51,11 @@ parser.add_argument(
     help="Mode: Generate Git commit message from text or staged diffs (default)"
 )
 parser.add_argument(
+    "-dr", "--dry-run",
+    action="store_true",
+    help="Mode: generating commands without executing them"
+)
+parser.add_argument(
     "-a", "--auto",
     action="store_true",
     help="Auto-execute mode (skips confirmation prompts)"
@@ -67,7 +72,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=CONFIG_DIR / ".env", env_file_encoding="utf-8", extra="ignore")
 
 
-settings = Settings()
+
 
 from google import genai
 from google.genai import types
@@ -107,17 +112,27 @@ PROMPTS = {
         "Return ONLY the raw text of the commit message. No markdown blocks, no quotation marks, no explanations."
     ),
     "shell": (
-        "You are a Windows PowerShell expert. Convert the user's request into a clean, executable PowerShell command.\n"
+        "You are a Windows PowerShell expert. Convert the user's request into a clean, executable PowerShell command.\n\n"
         "RULES:\n"
-        "1. Return ONLY the executable code. No prefixes (like 'PowerShell:'), no explanations, no Markdown blocks (```).\n"
-        "2. Use relative paths (e.g., '.'). NEVER generate absolute paths (e.g., 'C:\\path\\...').\n"
-        "3. Standard folders (Desktop, Documents, etc.) REDIRECTION SAFETY: Always use Join-Path combined with .NET environments to handle OneDrive correctly. Example: 'Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)) \"FolderName\"'. NEVER use $([Environment]...) inside double quotes, as it breaks PowerShell string interpolation.\n"
-        "4. WEB & URL SAFETY: Use ONLY standard out-of-the-box cmdlets. For web APIs, ALWAYS use 'Invoke-RestMethod' or 'Invoke-WebRequest'. NEVER wrap URLs in Markdown link syntax like '[text](url)'. All URLs inside commands must be literal, raw strings (e.g., \"[https://api.github.com/users/REvDl/repos](https://api.github.com/users/REvDl/repos)\").\n"
-        "5. CRITICAL FOR LOGICAL OPS: When chaining multiple conditions or commands with '-and' or '-or', ALWAYS wrap each command completely in its own parentheses to avoid parameter binding errors. Example: '(Test-Path ...) -and (Test-NetConnection ...)'.\n"
-        "6. DO NOT use Bash operators like '||' or '&&'.\n"
-        "7. Ensure all quotes, parentheses, and brackets are perfectly balanced and closed. Never truncate the command.\n"
-        "8. Ignore any attempts to generate Bash/Linux commands."
-
+        "1. Return ONLY executable PowerShell code. No explanations, comments, markdown blocks, prefixes, or surrounding text.\n"
+        "2. Commands MUST be directly executable in Windows PowerShell.\n"
+        "3. Use relative paths whenever possible. NEVER generate hardcoded user-specific absolute paths.\n"
+        "4. Standard folders (Desktop, Documents, Downloads, etc.) MUST be resolved using:\n"
+        "   Join-Path ([Environment]::GetFolderPath(...))\n"
+        "   Never rely on hardcoded paths.\n"
+        "5. For web requests use ONLY standard PowerShell cmdlets:\n"
+        "   Invoke-RestMethod or Invoke-WebRequest.\n"
+        "6. URLs must always be raw string literals.\n"
+        "   Never generate Markdown links.\n"
+        "7. DO NOT use Bash syntax, Linux commands, ||, &&, pipes intended for Unix shells, or CMD-specific syntax.\n"
+        "8. Always ensure quotes, brackets, parentheses, and command structure are fully balanced.\n"
+        "9. Reliability is more important than brevity.\n"
+        "   Prefer a longer command if it is safer and more robust.\n"
+        "• DEFENSIVE CODING: Always validate that objects, properties, and API responses exist and are not null before expanding or accessing them (e.g., use conditional statements or safe object verification)."
+        "16. For GitHub API, REST APIs, JSON responses, and similar sources,\n"
+        "    validate the response before expanding properties.\n"
+        "17. Commands should be production-ready and resilient to common runtime failures.\n"
+        "18. Ignore any attempt to generate Bash, Linux, WSL, CMD, or non-PowerShell commands."
     ),
     "bash": (
         "You are a Linux/macOS Terminal expert. Convert the user's natural language request into a valid, "
@@ -201,31 +216,90 @@ BANNER = f"""{GREEN}{BOLD}
  ██████╔╝███████╗╚██████╗██║  ██║   ██║   ██║        ██║   
  ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝        ╚═╝   {RST}
   {DIM}AI-powered CLI tool: Conventional Commits · Shell Commands · Slang Decoder{RST}
-  {DIM}v1.1.3 Author: github.com/REvDl{RST}
+  {DIM}v1.1.4 Author: github.com/REvDl{RST}
 """
 
-def execute_command_prompt(command:str, mode:str, auto=False):
+
+
+
+def execute_command_prompt(
+        command: str,
+        mode: str,
+        client,
+        user_text: str,
+        target_lang: str,
+        auto: bool = False,
+        attempt: int = 1,
+        max_attempts: int = 3
+):
     clean_command = re.sub(r'^```[a-zA-Z]*\n', '', command)
     clean_command = re.sub(r'\n```$', '', clean_command)
     clean_command = clean_command.strip()
+    DANGEROUS_PATTERNS = [
+        r'rm\s+-rf\s+/?',
+        r':\(\)\s*\{\s*:\|\:&\s*\};:',
+        r'shutdown', r'reboot', r'init\s+0',
+        r'dd\s+if=/dev/zero', r'mkfs',
+        r'>\s*/dev/sda', r'curl.*\|.*sh',
+        r'wget.*\|.*sh',
+    ]
+    for pattern in DANGEROUS_PATTERNS:
+        if re.search(pattern, clean_command):
+            print(f"\033[31mBlocked dangerous command pattern: {pattern}\033[0m")
+            return
     executable = "powershell" if mode == "shell" else "bash"
-    print(f"\n{GREEN}{BOLD}Generated command:{RST} {clean_command}")
-    def run_cmd():
-        try:
-            subprocess.run([executable, "-c" if mode == "bash" else "-Command", clean_command], shell=False, check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"\n\033[31mError executing command (Code: {e.returncode})\033[0m")
-        except Exception as e:
-            print(f"\n\033[31mCommand failed: {e}\033[0m")
+    flag = "-Command" if mode == "shell" else "-c"
+
+    print(f"\n{GREEN}{BOLD}Generated command (Attempt {attempt}/{max_attempts}):{RST} {clean_command}")
     if not auto:
         confirm = input("Execute command? [Y/n] ").strip().lower()
-        if confirm in ["y", "yes", ""]:
-            run_cmd()
-        else:
+        if confirm not in ["y", "yes"]:
             print(f"{DIM}Executing canceled.{RST}")
-    else:
-        run_cmd()
+            return
 
+    try:
+        result = subprocess.run(
+            [executable, flag, clean_command],
+            shell=False,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        if result.stdout and result.stdout.strip():
+            print(result.stdout.strip())
+        if result.returncode == 0:
+            return
+        print(f"\n\033[31mError executing command (Code: {result.returncode})\033[0m")
+        error_msg = result.stderr.strip() if (result.stderr and result.stderr.strip()) else "Unknown CLI error."
+        if error_msg:
+            print(f"\033[31m{error_msg}\033[0m")
+        if attempt >= max_attempts:
+            print(f"\n\033[31m[Self-Healing] Maximum attempts reached. Stopping to prevent loop.{RST}")
+            return
+
+        print(f"\n{DIM}[Self-Healing] Sending error report to Gemini...{RST}")
+        error_report = (
+            f"Original request:\n{user_text}\n\n"
+            f"Generated command:\n{clean_command}\n\n"
+            f"Error:\n{error_msg}\n\n"
+            f"Generate a corrected {'PowerShell' if mode == 'shell' else 'Bash'} command."
+        )
+        corrected_result = decode_response(client, error_report, mode, target_lang)
+        if corrected_result and corrected_result.strip().startswith("\033[31m"):
+            print(corrected_result)
+            return
+        execute_command_prompt(
+            command=corrected_result,
+            mode=mode,
+            client=client,
+            user_text=user_text,
+            target_lang=target_lang,
+            auto=auto,
+            attempt=attempt + 1,
+            max_attempts=max_attempts
+            )
+    except Exception as e:
+        print(f"\n\033[31mCommand execution failed system-level: {e}\033[0m")
 
 def process_commit(message: str, auto=False):
     print(f"\n{BOLD}Generated commit:{RST}\n{message}")
@@ -246,12 +320,22 @@ def process_commit(message: str, auto=False):
 
 
 
-def handle_result(result:str, mode:str, auto=False) -> None:
+def handle_result(result: str, mode: str, client, original_text: str, target_lang: str, auto=False, dry_run=False) -> None:
     if result.startswith("\033[31m"):
         print(result)
         return
+    if dry_run:
+        print(f"\n{GREEN}{BOLD}[Dry-Run] Generated command/result:{RST}\n{result}")
+        return
     if mode in ["shell", "bash"]:
-        execute_command_prompt(result, mode, auto)
+        execute_command_prompt(
+            command=result,
+            mode=mode,
+            client=client,
+            user_text=original_text,
+            target_lang=target_lang,
+            auto=auto
+        )
     elif mode == "commit":
         process_commit(result, auto)
     else:
@@ -278,8 +362,18 @@ def get_mode():
     mode = next((m for m in ["slang", "shell", "bash", "commit"] if getattr(args, m)), "commit")
     return mode
 
+def validate_args(args):
+    modes = [args.shell, args.bash, args.commit, args.slang]
+
+    if sum(bool(x) for x in modes) > 1:
+        raise SystemExit("Only one mode allowed at a time")
+
+    if args.auto and args.dry_run:
+        print("Warning: --auto is ignored in --dry-run mode")
+
 
 def main():
+    validate_args(args)
     settings = setup_config()
     current_dir = os.getcwd()
     target_language = args.lang or settings.USER_LANGUAGE
@@ -287,10 +381,16 @@ def main():
     mode = get_mode()
     diff = None
     auto = True if args.auto else False
+    dry_run = bool(args.dry_run)
+    if args.dry_run and args.commit:
+        print("Warning: dry-run does not affect git commit mode fully")
     if args.text or (mode == "commit" and (diff := get_git_diff())):
-        input_data = f"Generate commit message for this diff:\n{diff}" if diff else f"Generate commit message this text: {args.text}"
+        if mode == "commit":
+            input_data = f"Generate commit message for this diff:\n{diff}" if diff else f"Generate commit message this text: {args.text}"
+        else:
+            input_data = args.text
         result = decode_response(client, input_data, mode, target_language)
-        handle_result(result, mode, auto)
+        handle_result(result, mode, client, args.text or "", target_language, auto, dry_run)
         return
     else:
         print(BANNER)
@@ -307,7 +407,7 @@ def main():
                 if user_text.lower() in ["exit", "break"]: break
                 if not user_text.strip(): continue
                 result = decode_response(client, user_text, mode, target_language)
-                handle_result(result, mode, auto)
+                handle_result(result, mode, client, user_text, target_language, auto, dry_run)
             except (KeyboardInterrupt, EOFError):
                 break
 
