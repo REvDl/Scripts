@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import get_config_path, get_os_name, load_config, save_config
-from .launcher import GameNotFoundError, LaunchConfigError, launch_game, list_games
+from .launcher import GameNotFoundError, LaunchConfigError, find_game, launch_game, list_games
 from .steam_scanner import get_steam_install_path, scan_installed_games
 
 
@@ -33,6 +33,12 @@ def build_parser() -> argparse.ArgumentParser:
         nargs=2,
         metavar=("NAME", "APP_ID"),
         help='manually add a game to the config: --add "Half-Life 2" 220',
+    )
+    parser.add_argument(
+        "--remove",
+        metavar="NAME_OR_APPID",
+        help='remove a game from the config, by name or AppID: --remove "Half-Life 2" '
+        "or --remove 220",
     )
     parser.add_argument(
         "--scan",
@@ -118,6 +124,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.scan:
         return _run_scan(config, args, remove_missing=False)
+
+    if args.remove:
+        try:
+            name, _ = find_game(args.remove, config)
+        except GameNotFoundError:
+            print(f'Error: game "{args.remove}" was not found in the config.')
+            print("Check the list with: steamcli --list")
+            return 1
+        del config["games"][name]
+        save_config(config)
+        print(f'Removed "{name}" from the config.')
+        return 0
 
     if args.add:
         name, app_id_raw = args.add

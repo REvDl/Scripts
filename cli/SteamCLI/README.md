@@ -11,7 +11,7 @@ CLI utility for launching Steam games from the terminal. Python >= 3.12, no requ
 - List games — `steamcli --list`, or just run with no arguments.
 - Launch by **name** or by **AppID** — `steamcli "Dota 2"` or `steamcli 570` (name lookup is case-insensitive).
 - Launching a game that isn't in the config prints a clear error and exits with code 1.
-- Manually add/override games — `steamcli --add "Game Name" APP_ID`.
+- Manually add/override games — `steamcli --add "Game Name" APP_ID` — or remove them with `steamcli --remove "Game Name"` / `steamcli --remove APP_ID` (works by name or AppID, for both manual and auto-detected entries).
 - Two launch methods: via the `steam://rungameid/<id>` protocol (default, most reliable) or directly through the Steam executable with `-applaunch` (`launch_method: "executable"` in the config).
 
 ## Installation
@@ -34,6 +34,8 @@ steamcli --list                     # show the list of games
 steamcli "Dota 2"                   # launch by name
 steamcli 570                        # launch by AppID
 steamcli --add "Portal 2" 620       # add a game manually (e.g. one that isn't installed)
+steamcli --remove "Portal 2"        # remove a game by name
+steamcli --remove 620               # remove a game by AppID
 steamcli --config-path              # print the config file path
 ```
 
