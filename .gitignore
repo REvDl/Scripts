@@ -19,7 +19,7 @@ stats.md
 .env
 .env.local
 
-automation_tool/github_themes/stats_combine.md
-automation_tool/github_themes/stats_theme.md
-automation_tool/github_themes/streak.md
+automation_tool/GithubThemes/stats_combine.md
+automation_tool/GithubThemes/stats_theme.md
+automation_tool/GithubThemes/streak.md
 build/
