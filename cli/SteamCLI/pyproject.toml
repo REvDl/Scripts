@@ -1,5 +1,5 @@
 [project]
-name = "steamcli"
+name = "steamcli-launcher"
 version = "1.0.0"
 description = "CLI utility for launching Steam games from the console by name."
 readme = "README.md"
