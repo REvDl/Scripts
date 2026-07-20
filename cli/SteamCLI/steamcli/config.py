@@ -16,6 +16,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from . import ui
+
 APP_NAME = "steamcli"
 
 try:
@@ -101,8 +103,8 @@ def load_config() -> dict[str, Any]:
     path = get_config_path()
     if not path.exists():
         create_default_config(path)
-        print(f"Created default config: {path}")
-        print("Run 'steamcli --scan' to detect your installed games, or edit it manually.\n")
+        ui.success(f"Created default config: {path}")
+        ui.dim("Run 'steamcli --scan' to detect your installed games, or edit it manually.\n")
 
     if path.suffix in (".yaml", ".yml"):
         if not _HAS_YAML:

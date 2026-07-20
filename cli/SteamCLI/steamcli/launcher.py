@@ -6,6 +6,7 @@ import subprocess
 import webbrowser
 from typing import Any
 
+from . import ui
 from .config import get_os_name
 
 
@@ -57,19 +58,21 @@ def launch_game(query: str, config: dict[str, Any]) -> None:
     else:
         webbrowser.open(f"steam://rungameid/{app_id}")
 
-    print(f'Launching "{name}" (AppID: {app_id})...')
+    ui.success(f'Launching "{name}" (AppID: {app_id})...')
 
 
 def list_games(config: dict[str, Any]) -> None:
     games = config.get("games", {}) or {}
     if not games:
-        print("No games in the config yet.")
-        print("Run 'steamcli --scan' to auto-detect installed games,")
-        print('or add one manually: steamcli --add "Game Name" APP_ID')
+        ui.warning("No games in the config yet.")
+        ui.dim("Run 'steamcli --scan' to auto-detect installed games,")
+        ui.dim('or add one manually: steamcli --add "Game Name" APP_ID')
         return
 
-    print("Available games:")
+    ui.heading("Available games:")
     width = max(len(n) for n in games) + 2
     for name, data in sorted(games.items()):
         app_id = data.get("app_id", "?")
-        print(f"  {name:<{width}} AppID: {app_id}")
+        source = data.get("source")
+        tag = f"{ui.DIM} (manual){ui.RST}" if source == "manual" else ""
+        print(f"  {name:<{width}} {ui.DIM}AppID:{ui.RST} {app_id}{tag}")

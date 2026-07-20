@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from . import __version__
+from . import __version__, ui
 from .config import get_config_path, get_os_name, load_config, save_config
 from .launcher import GameNotFoundError, LaunchConfigError, find_game, launch_game, list_games
 from .steam_scanner import get_steam_install_paths, scan_installed_games
@@ -18,50 +18,56 @@ def build_parser() -> argparse.ArgumentParser:
         prog="steamcli",
         description="Launch Steam games from the command line.",
     )
+
     parser.add_argument(
         "game",
         nargs="?",
         help='Game name or AppID to launch, e.g. steamcli "Dota 2" or steamcli 570',
     )
+
     parser.add_argument(
         "-l", "--list", action="store_true", help="show the list of available games"
     )
     parser.add_argument(
-        "--config-path", action="store_true", help="print the path to the config file"
+        "-c", "--config-path", action="store_true", help="print the path to the config file"
     )
     parser.add_argument(
+        "-s", "--scan",
+        action="store_true",
+        help="auto-detect installed Steam games (via .acf files) and add/update "
+             "them in the config; existing entries not found on disk are kept as-is",
+    )
+    parser.add_argument(
+        "-S", "--sync",
+        action="store_true",
+        help="like --scan, but also removes auto-detected games that are no "
+             "longer installed. Games added manually with --add are never removed",
+    )
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"steamcli {__version__}"
+    )
+
+    advanced_group = parser.add_argument_group("")
+
+    advanced_group.add_argument(
         "--add",
         nargs=2,
         metavar=("NAME", "APP_ID"),
         help='manually add a game to the config: --add "Half-Life 2" 220',
     )
-    parser.add_argument(
+    advanced_group.add_argument(
         "--remove",
         metavar="NAME_OR_APPID",
         help='remove a game from the config, by name or AppID: --remove "Half-Life 2" '
-        "or --remove 220",
+             "or --remove 220",
     )
-    parser.add_argument(
-        "--scan",
-        action="store_true",
-        help="auto-detect installed Steam games (via .acf files) and add/update "
-        "them in the config; existing entries not found on disk are kept as-is",
-    )
-    parser.add_argument(
-        "--sync",
-        action="store_true",
-        help="like --scan, but also removes auto-detected games that are no "
-        "longer installed. Games added manually with --add are never removed",
-    )
-    parser.add_argument(
+    advanced_group.add_argument(
         "--steam-path",
         metavar="PATH",
-        help="manually specify the Steam install folder, used with --scan/--sync "
-        "if auto-detection fails",
+        help="manually specify a Steam install folder, used with --scan/--sync "
+             "if auto-detection fails",
     )
-    parser.add_argument(
-        "-v", "--version", action="version", version=f"steamcli {__version__}"
-    )
+
     return parser
 
 
@@ -111,15 +117,28 @@ def _run_scan(config: dict, args: argparse.Namespace, *, remove_missing: bool) -
     save_config(config)
 
     if not found and not removed:
-        print(f"No installed games found in {steam_path}.")
+        locations = ", ".join(str(p) for p in steam_paths)
+        ui.warning(f"No installed games found in {locations}.")
         return 0
 
-    print(f"Found installed games: {len(found)}")
-    print(f"  added:   {added}")
-    print(f"  updated: {updated}")
+    ui.heading("Scan complete")
+    if len(steam_paths) > 1:
+        ui.dim(f"Checked {len(steam_paths)} Steam installs:")
+        for p in steam_paths:
+            ui.dim(f"  - {p}")
+    print(f"  Found:   {len(found)}")
+    ui.success(f"  Added:   {added}")
+    if updated:
+        ui.warning(f"  Updated: {updated}")
+    else:
+        print(f"  Updated: {updated}")
     if remove_missing:
-        print(f"  removed: {len(removed)}" + (f" ({', '.join(removed)})" if removed else ""))
-    print(f"Config saved: {get_config_path()}")
+        removed_suffix = f" ({', '.join(removed)})" if removed else ""
+        if removed:
+            ui.warning(f"  Removed: {len(removed)}{removed_suffix}")
+        else:
+            print(f"  Removed: {len(removed)}")
+    ui.dim(f"Config saved: {get_config_path()}")
     return 0
 
 
@@ -143,12 +162,12 @@ def main(argv: list[str] | None = None) -> int:
         try:
             name, _ = find_game(args.remove, config)
         except GameNotFoundError:
-            print(f'Error: game "{args.remove}" was not found in the config.')
-            print("Check the list with: steamcli --list")
+            ui.error(f'Error: game "{args.remove}" was not found in the config.')
+            ui.dim("Check the list with: steamcli --list")
             return 1
         del config["games"][name]
         save_config(config)
-        print(f'Removed "{name}" from the config.')
+        ui.success(f'Removed "{name}" from the config.')
         return 0
 
     if args.add:
@@ -156,27 +175,28 @@ def main(argv: list[str] | None = None) -> int:
         try:
             app_id = int(app_id_raw)
         except ValueError:
-            print(f'Error: APP_ID must be a number, got "{app_id_raw}".')
+            ui.error(f'Error: APP_ID must be a number, got "{app_id_raw}".')
             return 1
         config.setdefault("games", {})[name] = {"app_id": app_id, "source": "manual"}
         save_config(config)
-        print(f'Added "{name}" (AppID: {app_id}) to the config.')
+        ui.success(f'Added "{name}" (AppID: {app_id}) to the config.')
         return 0
 
     if args.list or not args.game:
+        ui.banner()
         list_games(config)
         if not args.game:
-            print('\nTip: launch a game with steamcli "Game Name" or steamcli <AppID>')
+            ui.dim('\nTip: launch a game with steamcli "Game Name" or steamcli <AppID>')
         return 0
 
     try:
         launch_game(args.game, config)
     except GameNotFoundError:
-        print(f'Error: game "{args.game}" was not found in the list of available games.')
-        print("Check the list with: steamcli --list")
+        ui.error(f'Error: game "{args.game}" was not found in the list of available games.')
+        ui.dim("Check the list with: steamcli --list")
         return 1
     except LaunchConfigError as exc:
-        print(f"Configuration error: {exc}")
+        ui.error(f"Configuration error: {exc}")
         return 1
 
     return 0
