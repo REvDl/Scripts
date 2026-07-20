@@ -14,7 +14,15 @@ CLI utility that launches Steam games straight from the terminal:
 - Launch by name or AppID, via the Steam protocol or directly through the Steam executable
 - Manual add/remove for games Steam itself doesn't know about (e.g. not installed yet)
 
-No required third-party dependencies. Python >= 3.12.
+No required third-party dependencies. Python >= 3.10.
+
+---
+
+## Why
+
+Steam has its own launcher, but if you live in a terminal, alt-tabbing to a GUI just to start a game breaks flow. `steamcli` skips that — one command, no window switching, no hunting through a library list.
+
+The other reason it's worth having installed: `--scan`/`--sync` keep the config in sync with what's actually on disk, across every Steam install and library it can find. Set it up once, re-run it after installing something new, and it just stays current.
 
 ---
 
@@ -68,16 +76,32 @@ steamcli --config-path              # print the config file path
 ```
 Config is created automatically on first run (`config.json` in the OS-standard settings folder); `config.yaml` is also supported (requires `pyyaml` and a `config.yaml` file in the same folder).
 
+---
+
 ## Installation
 
+### From PyPI
 ```bash
-cd steamcli
+pip install steamcli
+```
+
+### Using pipx
+```bash
+pipx install steamcli
+```
+
+### Local development install
+```bash
+git clone https://github.com/REvDl/Scripts.git
+cd Scripts/cli/SteamCLI
 pip install .
 # for YAML config support:
 pip install .[yaml]
 ```
 
 This installs the `steamcli` command. You can also run it without installing: `python -m steamcli ...` from the project root.
+
+---
 
 ## Configuration
 
@@ -108,12 +132,12 @@ Example content after `steamcli --scan`:
 
 You can find a game's AppID on its Steam Store page URL, or on [SteamDB](https://steamdb.info).
 
+---
+
 ## CLI Usage
 
 ```
-usage: steamcli [-h] [-l] [--config-path] [--add NAME APP_ID]
-                 [--remove NAME_OR_APPID] [--scan] [--sync]
-                 [--steam-path PATH] [-v] [game]
+usage: steamcli [-h] [-l] [-c] [-s] [-S] [-v] [--add NAME APP_ID] [--remove NAME_OR_APPID] [--steam-path PATH] [game]
 
 Launch Steam games from the command line.
 
@@ -123,19 +147,22 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   -l, --list            show the list of available games
-  --config-path         print the path to the config file
-  --add NAME APP_ID     manually add a game to the config
-  --remove NAME_OR_APPID
-                        remove a game from the config, by name or AppID
-  --scan                auto-detect installed Steam games and add/update them in the config
-  --sync                like --scan, but also removes auto-detected games no longer installed
-  --steam-path PATH     manually specify a Steam install folder, used with --scan/--sync
+  -c, --config-path     print the path to the config file
+  -s, --scan            auto-detect installed Steam games (via .acf files) and add/update them in the config; existing entries not found on disk are kept as-is
+  -S, --sync            like --scan, but also removes auto-detected games that are no longer installed. Games added manually with --add are never removed
   -v, --version         show program's version number and exit
+
+  --add NAME APP_ID     manually add a game to the config: --add "Half-Life 2" 220
+  --remove NAME_OR_APPID
+                        remove a game from the config, by name or AppID: --remove "Half-Life 2" or --remove 220
+  --steam-path PATH     manually specify a Steam install folder, used with --scan/--sync if auto-detection fails
 ```
+
+---
 
 ## Tech Stack
 
-- Python 3.12+
+- Python 3.10+
 - `argparse`
 - built-in VDF/KeyValues parser (no dependency)
 - `pyyaml` (optional, only for `config.yaml`)
@@ -153,5 +180,6 @@ steamcli/
 │   ├── steam_scanner.py   # Steam folder detection + VDF parser + .acf scanning
 │   └── ui.py               # shared terminal styling (colors, banner)
 ├── pyproject.toml
+├── LICENSE
 └── README.md
 ```
