@@ -7,6 +7,14 @@ the steamapps folder of its library. If there is more than one library
 (e.g. games installed on different drives), the list of library folders
 is stored in steamapps/libraryfolders.vdf (also VDF).
 
+On Linux in particular, a single machine can have *more than one* Steam
+installation at once (e.g. the native/deb package plus a Flatpak
+sandboxed install, which lives under
+~/.var/app/com.valvesoftware.Steam/ because of Flatpak's virtual
+filesystem). get_steam_install_paths() therefore returns every install
+it can find that actually looks real, instead of stopping at the first
+folder that merely exists.
+
 This module has no third-party dependencies: it implements a minimal VDF
 parser, sufficient to read these two file types.
 """
@@ -63,8 +71,33 @@ def parse_vdf(text: str) -> dict[str, Any]:
     return result
 
 
-def get_steam_install_path(os_name: str) -> Path | None:
-    """Finds the Steam installation folder for the current OS."""
+def _looks_like_steam_install(path: Path) -> bool:
+    """Only count a folder as a *real* Steam install if its steamapps
+    directory actually contains library data (libraryfolders.vdf, or at
+    least one appmanifest_*.acf).
+
+    Just the base folder existing is not enough: a stray ~/.steam/steam
+    can be left behind with no real games in it at all (e.g. only SDK
+    redistributable files dropped there by a pirated-game emulator), and
+    picking that folder as "the" Steam install used to make the scanner
+    stop looking any further, silently ignoring an actual Flatpak
+    install sitting right next to it.
+    """
+    steamapps = path / "steamapps"
+    if not steamapps.is_dir():
+        return False
+    if (steamapps / "libraryfolders.vdf").exists():
+        return True
+    return any(steamapps.glob("appmanifest_*.acf"))
+
+
+def get_steam_install_paths(os_name: str) -> list[Path]:
+    """Finds every Steam installation folder for the current OS.
+
+    Returns a list because more than one can legitimately coexist
+    (typical case: native package + Flatpak). Callers should scan all
+    of them and merge the results, rather than only using the first.
+    """
     if os_name == "windows":
         try:
             import winreg
@@ -73,7 +106,7 @@ def get_steam_install_path(os_name: str) -> Path | None:
             value, _ = winreg.QueryValueEx(key, "SteamPath")
             path = Path(value)
             if path.exists():
-                return path
+                return [path]
         except OSError:
             pass
         for env_var in ("ProgramFiles(x86)", "ProgramFiles"):
@@ -81,23 +114,30 @@ def get_steam_install_path(os_name: str) -> Path | None:
             if base:
                 candidate = Path(base) / "Steam"
                 if candidate.exists():
-                    return candidate
-        return None
+                    return [candidate]
+        return []
 
     if os_name == "macos":
         candidate = Path.home() / "Library" / "Application Support" / "Steam"
-        return candidate if candidate.exists() else None
+        return [candidate] if candidate.exists() else []
 
     # linux
-    for candidate in (
+    candidates = (
         Path.home() / ".steam" / "steam",
         Path.home() / ".steam" / "root",
         Path.home() / ".local" / "share" / "Steam",
         Path.home() / ".var" / "app" / "com.valvesoftware.Steam" / ".local" / "share" / "Steam",
-    ):
-        if candidate.exists():
-            return candidate
-    return None
+    )
+
+    found = [c for c in candidates if _looks_like_steam_install(c)]
+    if found:
+        return found
+
+    # Nothing looked like a *genuine* install (steamapps with real
+    # library data) - fall back to whatever plain folders exist, so
+    # unusual-but-valid setups still get a chance instead of a hard
+    # "not found" with no candidates at all.
+    return [c for c in candidates if c.exists()]
 
 
 def get_library_folders(steam_path: Path) -> list[Path]:

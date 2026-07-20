@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 from . import __version__
 from .config import get_config_path, get_os_name, load_config, save_config
 from .launcher import GameNotFoundError, LaunchConfigError, find_game, launch_game, list_games
-from .steam_scanner import get_steam_install_path, scan_installed_games
+from .steam_scanner import get_steam_install_paths, scan_installed_games
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -64,20 +65,33 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _resolve_steam_path(args: argparse.Namespace) -> Path | None:
+def _resolve_steam_paths(args: argparse.Namespace) -> list[Path]:
+    """
+    Returns every Steam install folder to scan.
+
+    NOTE: get_steam_install_paths() can legitimately return more than one
+    path (e.g. a native install *and* a Flatpak install side by side), so
+    every caller here scans and merges all of them instead of picking just
+    the first one - that's what used to make --scan silently miss games
+    for Flatpak users who also had a leftover native ~/.steam/steam folder.
+    """
     if args.steam_path:
-        return Path(args.steam_path)
-    return get_steam_install_path(get_os_name())
+        manual_path = Path(args.steam_path)
+        return [manual_path] if manual_path.exists() else []
+    return get_steam_install_paths(get_os_name())
 
 
 def _run_scan(config: dict, args: argparse.Namespace, *, remove_missing: bool) -> int:
-    steam_path = _resolve_steam_path(args)
-    if not steam_path or not steam_path.exists():
-        print("Error: could not find a Steam installation folder.")
-        print("Specify it manually: steamcli --scan --steam-path <path>")
+    steam_paths = _resolve_steam_paths(args)
+    if not steam_paths:
+        ui.error("Error: could not find a Steam installation folder.")
+        ui.dim("Specify it manually: steamcli --scan --steam-path <path>")
         return 1
 
-    found = scan_installed_games(steam_path)
+    found: dict[str, dict[str, Any]] = {}
+    for steam_path in steam_paths:
+        found.update(scan_installed_games(steam_path))
+
     games = config.setdefault("games", {})
 
     removed: list[str] = []
