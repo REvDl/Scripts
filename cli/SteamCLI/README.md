@@ -1,18 +1,72 @@
-# steamcli
+```
+ ███████╗████████╗███████╗ █████╗ ███╗   ███╗ ██████╗██╗     ██╗
+ ██╔════╝╚══██╔══╝██╔════╝██╔══██╗████╗ ████║██╔════╝██║     ██║
+ ███████╗   ██║   █████╗  ███████║██╔████╔██║██║     ██║     ██║
+ ╚════██║   ██║   ██╔══╝  ██╔══██║██║╚██╔╝██║██║     ██║     ██║
+ ███████║   ██║   ███████╗██║  ██║██║ ╚═╝ ██║╚██████╗███████╗██║
+ ╚══════╝   ╚═╝   ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝╚══════╝╚═╝
+  Launch your Steam games from the command line
+```
+CLI utility that launches Steam games straight from the terminal:
 
-CLI utility for launching Steam games from the terminal. Python >= 3.12, no required external dependencies.
+- Automatic game discovery across **every** Steam install on the machine (native package, Flatpak, extra library drives)
+- Sync mode that keeps the config in line with what's actually installed
+- Launch by name or AppID, via the Steam protocol or directly through the Steam executable
+- Manual add/remove for games Steam itself doesn't know about (e.g. not installed yet)
+
+No required third-party dependencies. Python >= 3.12.
+
+---
 
 ## Features
 
-- OS detection via `sys.platform` (Windows / Linux / macOS).
-- **Automatic game discovery** — `steamcli --scan` locates your Steam install, walks every library (including extra ones on other drives, via `libraryfolders.vdf`) and parses `appmanifest_*.acf` for each installed game. Uses a small built-in VDF parser, no third-party dependency.
-- **Sync mode** — `steamcli --sync` does the same, but also removes auto-detected games from the config that are no longer installed. Games you added yourself with `--add` are never touched by sync.
-- Config is created automatically on first run (`config.json` in the OS-standard settings folder); `config.yaml` is also supported (requires `pyyaml` and a `config.yaml` file in the same folder).
-- List games — `steamcli --list`, or just run with no arguments.
-- Launch by **name** or by **AppID** — `steamcli "Dota 2"` or `steamcli 570` (name lookup is case-insensitive).
-- Launching a game that isn't in the config prints a clear error and exits with code 1.
-- Manually add/override games — `steamcli --add "Game Name" APP_ID` — or remove them with `steamcli --remove "Game Name"` / `steamcli --remove APP_ID` (works by name or AppID, for both manual and auto-detected entries).
-- Two launch methods: via the `steam://rungameid/<id>` protocol (default, most reliable) or directly through the Steam executable with `-applaunch` (`launch_method: "executable"` in the config).
+### 1. Automatic Discovery (`--scan` / `--sync`)
+Locates every Steam installation it can find — including side-by-side setups like a native package plus a Flatpak sandbox — and walks every library of each one (main library + any extra ones on other drives, via `libraryfolders.vdf`), parsing `appmanifest_*.acf` for each installed game. Uses a small built-in VDF parser, no third-party dependency.
+
+```bash
+steamcli --scan                     # auto-detect installed games (add/update only)
+steamcli --sync                     # same, but also removes uninstalled games
+```
+
+`--sync` also removes auto-detected games from the config that are no longer installed. Games you added yourself with `--add` are never touched by sync. Both can be re-run any time, e.g. after installing or uninstalling something, to refresh the list.
+
+If auto-detection can't find your install (uncommon setup, unusual path):
+
+```bash
+steamcli --scan --steam-path "D:\SteamLibrary\Steam"
+```
+
+### 2. Launching
+Launch by **name** or by **AppID** (name lookup is case-insensitive):
+
+```bash
+steamcli "Dota 2"
+steamcli 570
+```
+
+Two launch methods are supported: via the `steam://rungameid/<id>` protocol (default, most reliable) or directly through the Steam executable with `-applaunch` (set `launch_method: "executable"` in the config). Launching a game that isn't in the config prints a clear error and exits with code 1:
+
+```
+$ steamcli "Half-Life 3"
+Error: game "Half-Life 3" was not found in the list of available games.
+Check the list with: steamcli --list
+```
+
+### 3. Manual management (`--add` / `--remove`)
+For games you want listed before they're installed, or entries you'd rather manage by hand:
+
+```bash
+steamcli --add "Portal 2" 620       # add a game manually
+steamcli --remove "Portal 2"        # remove by name
+steamcli --remove 620               # remove by AppID
+```
+
+### 4. Listing & config
+```bash
+steamcli --list                     # show the list of games, or just run with no arguments
+steamcli --config-path              # print the config file path
+```
+Config is created automatically on first run (`config.json` in the OS-standard settings folder); `config.yaml` is also supported (requires `pyyaml` and a `config.yaml` file in the same folder).
 
 ## Installation
 
@@ -25,37 +79,7 @@ pip install .[yaml]
 
 This installs the `steamcli` command. You can also run it without installing: `python -m steamcli ...` from the project root.
 
-## Usage
-
-```bash
-steamcli --scan                     # auto-detect installed games (add/update only)
-steamcli --sync                     # same, but also removes uninstalled games (manual entries kept)
-steamcli --list                     # show the list of games
-steamcli "Dota 2"                   # launch by name
-steamcli 570                        # launch by AppID
-steamcli --add "Portal 2" 620       # add a game manually (e.g. one that isn't installed)
-steamcli --remove "Portal 2"        # remove a game by name
-steamcli --remove 620               # remove a game by AppID
-steamcli --config-path              # print the config file path
-```
-
-If Steam's install folder can't be auto-detected:
-
-```bash
-steamcli --scan --steam-path "D:\SteamLibrary\Steam"
-```
-
-`--scan` / `--sync` can be re-run any time, e.g. after installing or uninstalling a game, to refresh the list.
-
-If a game isn't found:
-
-```
-$ steamcli "Half-Life 3"
-Error: game "Half-Life 3" was not found in the list of available games.
-Check the list with: steamcli --list
-```
-
-## Config location
+## Configuration
 
 - Windows: `%APPDATA%\steamcli\config.json`
 - macOS: `~/Library/Application Support/steamcli/config.json`
@@ -80,9 +104,41 @@ Example content after `steamcli --scan`:
 
 `"source"` marks where an entry came from: `"scan"` for auto-detected games (safe to remove via `--sync` if uninstalled) or `"manual"` for ones added with `--add` (never removed automatically).
 
-`steam_path` is only used by the `"executable"` launch method (direct `-applaunch`) — game *discovery* via `--scan`/`--sync` uses a separately auto-detected Steam folder (Windows registry, or standard paths on Linux/macOS).
+`steam_path` is only used by the `"executable"` launch method (direct `-applaunch`) — game *discovery* via `--scan`/`--sync` uses separately auto-detected Steam folders (Windows registry, or standard paths on Linux/macOS, including Flatpak).
 
 You can find a game's AppID on its Steam Store page URL, or on [SteamDB](https://steamdb.info).
+
+## CLI Usage
+
+```
+usage: steamcli [-h] [-l] [--config-path] [--add NAME APP_ID]
+                 [--remove NAME_OR_APPID] [--scan] [--sync]
+                 [--steam-path PATH] [-v] [game]
+
+Launch Steam games from the command line.
+
+positional arguments:
+  game                  Game name or AppID to launch, e.g. steamcli "Dota 2" or steamcli 570
+
+options:
+  -h, --help            show this help message and exit
+  -l, --list            show the list of available games
+  --config-path         print the path to the config file
+  --add NAME APP_ID     manually add a game to the config
+  --remove NAME_OR_APPID
+                        remove a game from the config, by name or AppID
+  --scan                auto-detect installed Steam games and add/update them in the config
+  --sync                like --scan, but also removes auto-detected games no longer installed
+  --steam-path PATH     manually specify a Steam install folder, used with --scan/--sync
+  -v, --version         show program's version number and exit
+```
+
+## Tech Stack
+
+- Python 3.12+
+- `argparse`
+- built-in VDF/KeyValues parser (no dependency)
+- `pyyaml` (optional, only for `config.yaml`)
 
 ## Project structure
 
@@ -94,7 +150,8 @@ steamcli/
 │   ├── cli.py             # argparse, entry point
 │   ├── config.py          # read/write config.json|yaml
 │   ├── launcher.py        # find a game by name/AppID and launch Steam
-│   └── steam_scanner.py   # Steam folder detection + VDF parser + .acf scanning
+│   ├── steam_scanner.py   # Steam folder detection + VDF parser + .acf scanning
+│   └── ui.py               # shared terminal styling (colors, banner)
 ├── pyproject.toml
 └── README.md
 ```
